@@ -99,8 +99,10 @@
       },
       "widgets_values": [
         "Edit the reference image into a polished product ad with soft rim lighting and a clean premium backdrop.",
+        42,
         "auto",
         "IMAGE+TEXT",
+        "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests.",
         "2K",
         "high",
         true
@@ -144,4 +146,3 @@
   },
   "version": 0.4
 }
-

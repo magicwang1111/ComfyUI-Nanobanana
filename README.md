@@ -47,30 +47,36 @@
 
 - `client`
 - `prompt`
+- `seed`
 - `images` 可选
 - `aspect_ratio`
 - `response_mode`
+- `system_prompt`
 
 ### Nano Banana 2
 
 - `client`
 - `prompt`
+- `seed`
 - `images` 可选
 - `aspect_ratio`
 - `response_mode`
 - `resolution`
 - `thinking_level`
 - `include_thoughts`
+- `system_prompt`
 
 ### Nano Banana Pro
 
 - `client`
 - `prompt`
+- `seed`
 - `images` 可选
 - `aspect_ratio`
 - `response_mode`
 - `resolution`
 - `thinking_level`
+- `system_prompt`
 
 ## 模型差异
 
@@ -83,7 +89,9 @@
 补充说明：
 
 - `response_mode` 默认为 `IMAGE+TEXT`
+- `seed` 现在会真实透传到 `generationConfig.seed`
 - `aspect_ratio=auto` 时不显式写入 `imageConfig.aspectRatio`
+- `system_prompt` 默认为一段强制“始终产图”的官方风格提示词，也可以手动清空或覆盖
 - `response_json` 会保留原始结构，但会把返回里的 base64 图片数据替换成占位文本，避免字符串输出过大
 - 如果 `Nano Banana 2` 未返回 thought 图，`thought_image` 会输出一个占位黑图张量
 

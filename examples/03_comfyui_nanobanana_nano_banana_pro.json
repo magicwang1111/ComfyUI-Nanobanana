@@ -148,8 +148,10 @@
       },
       "widgets_values": [
         "Create a premium campaign image that combines both references into one polished luxury brand scene with crisp text rendering.",
+        42,
         "5:4",
         "IMAGE+TEXT",
+        "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests.",
         "4K",
         "high"
       ]

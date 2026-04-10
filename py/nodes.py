@@ -7,6 +7,8 @@ from .api import (
     CLIENT_TYPE,
     DEFAULT_RESPONSE_MODE,
     DEFAULT_RESOLUTION,
+    DEFAULT_SEED,
+    DEFAULT_SYSTEM_PROMPT,
     DEFAULT_THINKING_LEVEL,
     RESPONSE_MODES,
     Client,
@@ -107,11 +109,13 @@ class _BaseNanoBananaNode:
         required = {
             "client": (CLIENT_TYPE,),
             "prompt": ("STRING", {"multiline": True, "default": ""}),
+            "seed": ("INT", {"default": DEFAULT_SEED, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "control_after_generate": True}),
             "aspect_ratio": (spec["aspect_ratios"], {"default": "auto"}),
             "response_mode": (RESPONSE_MODES, {"default": DEFAULT_RESPONSE_MODE}),
         }
         optional = {
             "images": ("IMAGE",),
+            "system_prompt": ("STRING", {"multiline": True, "default": DEFAULT_SYSTEM_PROMPT}),
         }
 
         if spec["supports_resolution"]:
@@ -132,12 +136,14 @@ class _BaseNanoBananaNode:
         self,
         client,
         prompt,
+        seed,
         aspect_ratio,
         response_mode,
         images=None,
         resolution=None,
         thinking_level=None,
         include_thoughts=False,
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
     ):
         validate_generation_request(
             self.MODEL_NAME,
@@ -145,9 +151,11 @@ class _BaseNanoBananaNode:
             images=images,
             aspect_ratio=aspect_ratio,
             response_mode=response_mode,
+            seed=seed,
             resolution=resolution,
             thinking_level=thinking_level,
             include_thoughts=include_thoughts,
+            system_prompt=system_prompt,
         )
 
         payload = build_generation_payload(
@@ -155,9 +163,11 @@ class _BaseNanoBananaNode:
             images=images,
             aspect_ratio=aspect_ratio,
             response_mode=response_mode,
+            seed=seed,
             resolution=resolution,
             thinking_level=thinking_level,
             include_thoughts=include_thoughts,
+            system_prompt=system_prompt,
         )
 
         try:
@@ -176,13 +186,24 @@ class NanoBanana25Node(_BaseNanoBananaNode):
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
     RETURN_NAMES = ("image", "text", "response_json")
 
-    def generate(self, client, prompt, aspect_ratio="auto", response_mode=DEFAULT_RESPONSE_MODE, images=None):
+    def generate(
+        self,
+        client,
+        prompt,
+        seed=DEFAULT_SEED,
+        aspect_ratio="auto",
+        response_mode=DEFAULT_RESPONSE_MODE,
+        images=None,
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
+    ):
         parsed_output, response_json = self._execute_request(
             client=client,
             prompt=prompt,
+            seed=seed,
             aspect_ratio=aspect_ratio,
             response_mode=response_mode,
             images=images,
+            system_prompt=system_prompt,
         )
         return (parsed_output["images"], parsed_output["text"], response_json)
 
@@ -197,22 +218,26 @@ class NanoBanana31Node(_BaseNanoBananaNode):
         self,
         client,
         prompt,
+        seed=DEFAULT_SEED,
         aspect_ratio="auto",
         response_mode=DEFAULT_RESPONSE_MODE,
         images=None,
         resolution=DEFAULT_RESOLUTION,
         thinking_level=DEFAULT_THINKING_LEVEL,
         include_thoughts=False,
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
     ):
         parsed_output, response_json = self._execute_request(
             client=client,
             prompt=prompt,
+            seed=seed,
             aspect_ratio=aspect_ratio,
             response_mode=response_mode,
             images=images,
             resolution=resolution,
             thinking_level=thinking_level,
             include_thoughts=include_thoughts,
+            system_prompt=system_prompt,
         )
         thought_images = parsed_output["thought_images"] or empty_image_tensor()
         return (parsed_output["images"], parsed_output["text"], thought_images, response_json)
@@ -228,19 +253,23 @@ class NanoBananaProNode(_BaseNanoBananaNode):
         self,
         client,
         prompt,
+        seed=DEFAULT_SEED,
         aspect_ratio="auto",
         response_mode=DEFAULT_RESPONSE_MODE,
         images=None,
         resolution=DEFAULT_RESOLUTION,
         thinking_level=DEFAULT_THINKING_LEVEL,
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
     ):
         parsed_output, response_json = self._execute_request(
             client=client,
             prompt=prompt,
+            seed=seed,
             aspect_ratio=aspect_ratio,
             response_mode=response_mode,
             images=images,
             resolution=resolution,
             thinking_level=thinking_level,
+            system_prompt=system_prompt,
         )
         return (parsed_output["images"], parsed_output["text"], response_json)

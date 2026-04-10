@@ -66,8 +66,10 @@
       },
       "widgets_values": [
         "A cinematic product shot of a glossy yellow banana-shaped perfume bottle on a clean studio background.",
+        42,
         "16:9",
-        "IMAGE+TEXT"
+        "IMAGE+TEXT",
+        "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests."
       ]
     },
     {
@@ -107,4 +109,3 @@
   },
   "version": 0.4
 }
-

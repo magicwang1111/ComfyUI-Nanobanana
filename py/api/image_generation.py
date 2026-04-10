@@ -52,9 +52,11 @@ def build_generation_payload(
     images=None,
     aspect_ratio="auto",
     response_mode=DEFAULT_RESPONSE_MODE,
+    seed=None,
     resolution=None,
     thinking_level=None,
     include_thoughts=False,
+    system_prompt=None,
 ):
     parts = [{"text": prompt.strip()}]
     for image in _tensor_to_pil_images(images):
@@ -70,6 +72,8 @@ def build_generation_payload(
     generation_config = {
         "responseModalities": ["IMAGE"] if response_mode == "IMAGE" else ["TEXT", "IMAGE"],
     }
+    if seed is not None:
+        generation_config["seed"] = seed
 
     image_config = {}
     if aspect_ratio and aspect_ratio != "auto":
@@ -87,10 +91,17 @@ def build_generation_payload(
     if thinking_config:
         generation_config["thinkingConfig"] = thinking_config
 
-    return {
+    payload = {
         "contents": [{"parts": parts}],
         "generationConfig": generation_config,
     }
+    cleaned_system_prompt = system_prompt.strip() if isinstance(system_prompt, str) else ""
+    if cleaned_system_prompt:
+        payload["systemInstruction"] = {
+            "parts": [{"text": cleaned_system_prompt}],
+            "role": None,
+        }
+    return payload
 
 
 def _sanitize_payload(value, parent_key=None):

@@ -26,17 +26,28 @@ class ImageGenerationTests(unittest.TestCase):
             images=images,
             aspect_ratio="16:9",
             response_mode="IMAGE+TEXT",
+            seed=123,
             resolution="2K",
             thinking_level="high",
             include_thoughts=True,
+            system_prompt="system text",
         )
 
         self.assertEqual(payload["contents"][0]["parts"][0]["text"], "hello")
         self.assertEqual(len(payload["contents"][0]["parts"]), 3)
+        self.assertEqual(payload["generationConfig"]["seed"], 123)
         self.assertEqual(payload["generationConfig"]["imageConfig"]["aspectRatio"], "16:9")
         self.assertEqual(payload["generationConfig"]["imageConfig"]["imageSize"], "2K")
         self.assertTrue(payload["generationConfig"]["thinkingConfig"]["includeThoughts"])
         self.assertEqual(payload["generationConfig"]["thinkingConfig"]["thinkingLevel"], "High")
+        self.assertEqual(payload["systemInstruction"]["parts"][0]["text"], "system text")
+
+    def test_build_payload_omits_blank_system_prompt(self):
+        payload = image_generation.build_generation_payload(
+            prompt="hello",
+            system_prompt="   ",
+        )
+        self.assertNotIn("systemInstruction", payload)
 
     def test_extract_generation_output_splits_thought_images(self):
         response_payload = {

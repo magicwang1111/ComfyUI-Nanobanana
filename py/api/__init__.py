@@ -2,6 +2,8 @@ from .capabilities import (
     CLIENT_TYPE,
     DEFAULT_RESPONSE_MODE,
     DEFAULT_RESOLUTION,
+    DEFAULT_SEED,
+    DEFAULT_SYSTEM_PROMPT,
     DEFAULT_THINKING_LEVEL,
     RESPONSE_MODES,
     get_model_spec,
@@ -20,6 +22,8 @@ __all__ = [
     "CLIENT_TYPE",
     "DEFAULT_RESPONSE_MODE",
     "DEFAULT_RESOLUTION",
+    "DEFAULT_SEED",
+    "DEFAULT_SYSTEM_PROMPT",
     "DEFAULT_THINKING_LEVEL",
     "RESPONSE_MODES",
     "Client",
@@ -31,4 +35,3 @@ __all__ = [
     "sanitize_response_for_debug",
     "validate_generation_request",
 ]
-
