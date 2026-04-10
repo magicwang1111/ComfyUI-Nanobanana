@@ -1,26 +1,49 @@
 import httpx
 
+from .capabilities import AUTH_MODES, DEFAULT_AUTH_MODE, DEFAULT_BASE_URL, DEFAULT_SEND_SEED
 from .exceptions import NanoBananaAPIError
 
 
 class Client:
-    def __init__(self, api_key, timeout=60, base_url="https://generativelanguage.googleapis.com"):
+    def __init__(
+        self,
+        api_key,
+        timeout=60,
+        base_url=DEFAULT_BASE_URL,
+        auth_mode=DEFAULT_AUTH_MODE,
+        send_seed=DEFAULT_SEND_SEED,
+    ):
         api_key = (api_key or "").strip()
         if not api_key:
             raise ValueError("api_key is required.")
 
         self.api_key = api_key
         self.timeout = timeout
-        self.base_url = base_url.rstrip("/")
+        self.base_url = (base_url or DEFAULT_BASE_URL).strip().rstrip("/")
+        self.auth_mode = self.normalize_auth_mode(auth_mode)
+        self.send_seed = bool(send_seed)
         timeout_config = httpx.Timeout(connect=10.0, read=timeout, write=timeout, pool=timeout)
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout_config,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
+            headers=self.build_headers(self.api_key, self.auth_mode),
         )
+
+    @staticmethod
+    def normalize_auth_mode(auth_mode):
+        normalized = (auth_mode or DEFAULT_AUTH_MODE).strip().lower()
+        if normalized not in AUTH_MODES:
+            raise ValueError(f"auth_mode must be one of: {', '.join(AUTH_MODES)}.")
+        return normalized
+
+    @staticmethod
+    def build_headers(api_key, auth_mode):
+        headers = {"Content-Type": "application/json"}
+        if auth_mode == "bearer":
+            headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            headers["x-goog-api-key"] = api_key
+        return headers
 
     def request(self, method, path, **kwargs):
         if "json" in kwargs and isinstance(kwargs["json"], dict):
@@ -29,11 +52,9 @@ class Client:
         try:
             response = self._client.request(method, path, **kwargs)
         except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"Gemini API request timed out after {self.timeout}s while waiting for {method} {path}."
-            ) from exc
+            raise TimeoutError(f"API request timed out after {self.timeout}s while waiting for {method} {path}.") from exc
         except httpx.HTTPError as exc:
-            raise ConnectionError(f"Gemini API request failed for {method} {path}: {exc}") from exc
+            raise ConnectionError(f"API request failed for {method} {path}: {exc}") from exc
 
         if response.status_code != 200:
             raise NanoBananaAPIError.from_response(response)
@@ -45,4 +66,3 @@ class Client:
 
     def close(self):
         self._client.close()
-

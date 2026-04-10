@@ -2,14 +2,14 @@ class NanoBananaAPIError(Exception):
     def __init__(self, status_code, status, message, details=None, response_body=None):
         self.status_code = status_code
         self.status = status
-        self.message = message or "Unknown Gemini API error"
+        self.message = message or "Unknown API error"
         self.details = details or []
         self.response_body = response_body
         super().__init__(self._format_message())
 
     def _format_message(self):
         status_label = f" {self.status}" if self.status else ""
-        return f"Gemini API request failed ({self.status_code}{status_label}): {self.message}"
+        return f"API request failed ({self.status_code}{status_label}): {self.message}"
 
     @classmethod
     def from_response(cls, response):

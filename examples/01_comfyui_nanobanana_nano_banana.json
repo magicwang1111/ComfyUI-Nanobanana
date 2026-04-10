@@ -8,7 +8,7 @@
       "id": 1,
       "type": "ComfyUI-Nanobanana Client",
       "pos": [40, 60],
-      "size": [320, 140],
+      "size": [320, 200],
       "flags": {},
       "order": 0,
       "mode": 0,
@@ -24,13 +24,13 @@
       "properties": {
         "Node name for S&R": "ComfyUI-Nanobanana Client"
       },
-      "widgets_values": ["", 60]
+      "widgets_values": ["", 60, "https://generativelanguage.googleapis.com", "x-goog-api-key", true]
     },
     {
       "id": 2,
       "type": "ComfyUI-Nanobanana Nano Banana",
       "pos": [420, 40],
-      "size": [420, 210],
+      "size": [420, 240],
       "flags": {},
       "order": 1,
       "mode": 0,
@@ -69,7 +69,8 @@
         42,
         "16:9",
         "IMAGE+TEXT",
-        "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests."
+        "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input-regardless of format, intent, or abstraction-as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests.",
+        ""
       ]
     },
     {

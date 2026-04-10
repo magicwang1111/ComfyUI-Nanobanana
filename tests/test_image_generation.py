@@ -80,6 +80,30 @@ class ImageGenerationTests(unittest.TestCase):
         self.assertEqual(tuple(output["thought_images"].shape), (1, 4, 4, 3))
         self.assertEqual(output["text"], "done")
 
+    def test_extract_generation_output_accepts_snake_case_image_fields(self):
+        response_payload = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": "done"},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": _make_base64_png((255, 0, 0)),
+                                }
+                            },
+                        ]
+                    }
+                }
+            ]
+        }
+
+        output = image_generation.extract_generation_output(response_payload)
+        self.assertEqual(tuple(output["images"].shape), (1, 4, 4, 3))
+        self.assertIsNone(output["thought_images"])
+        self.assertEqual(output["text"], "done")
+
     def test_sanitize_response_replaces_base64(self):
         payload = {
             "candidates": [
