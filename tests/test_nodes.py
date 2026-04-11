@@ -17,9 +17,10 @@ def _make_base64_png(color):
 
 
 class FakeClient:
-    def __init__(self, send_seed=True):
+    def __init__(self, send_seed=True, base_url="https://generativelanguage.googleapis.com"):
         self.calls = []
         self.send_seed = send_seed
+        self.base_url = base_url
 
     def generate_content(self, model_name, payload):
         self.calls.append((model_name, payload))
@@ -83,6 +84,45 @@ class ModelOverrideTests(unittest.TestCase):
 
         _, payload = client.calls[0]
         self.assertNotIn("seed", payload["generationConfig"])
+
+    def test_aihubmix_pro_strips_explicit_thinking_level(self):
+        client = FakeClient(base_url="https://aihubmix.com/gemini")
+
+        nodes.NanoBananaProNode().generate(
+            client,
+            "hello",
+            resolution="2K",
+            thinking_level="high",
+        )
+
+        _, payload = client.calls[0]
+        self.assertNotIn("thinkingConfig", payload["generationConfig"])
+
+    def test_aihubmix_nano_banana_2_keeps_thinking_level(self):
+        client = FakeClient(base_url="https://aihubmix.com/gemini")
+
+        nodes.NanoBanana31Node().generate(
+            client,
+            "hello",
+            resolution="2K",
+            thinking_level="medium",
+        )
+
+        _, payload = client.calls[0]
+        self.assertEqual(payload["generationConfig"]["thinkingConfig"]["thinkingLevel"], "Medium")
+
+    def test_non_aihubmix_pro_keeps_thinking_level(self):
+        client = FakeClient(base_url="https://relay.example.com")
+
+        nodes.NanoBananaProNode().generate(
+            client,
+            "hello",
+            resolution="2K",
+            thinking_level="high",
+        )
+
+        _, payload = client.calls[0]
+        self.assertEqual(payload["generationConfig"]["thinkingConfig"]["thinkingLevel"], "High")
 
 
 if __name__ == "__main__":

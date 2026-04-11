@@ -17,6 +17,7 @@ from .api import (
     RESPONSE_MODES,
     Client,
     NanoBananaAPIError,
+    apply_generation_payload_rules,
     build_generation_payload,
     empty_image_tensor,
     extract_generation_output,
@@ -278,6 +279,12 @@ class _BaseNanoBananaNode:
             thinking_level=thinking_level,
             include_thoughts=include_thoughts,
             system_prompt=system_prompt,
+        )
+        payload = apply_generation_payload_rules(
+            getattr(client, "base_url", ""),
+            self.MODEL_NAME,
+            request_model_name,
+            payload,
         )
 
         try:

@@ -21,6 +21,7 @@ from .image_generation import (
     extract_generation_output,
     sanitize_response_for_debug,
 )
+from .site_rules import apply_generation_payload_rules
 
 __all__ = [
     "AUTH_MODES",
@@ -36,6 +37,7 @@ __all__ = [
     "RESPONSE_MODES",
     "Client",
     "NanoBananaAPIError",
+    "apply_generation_payload_rules",
     "build_generation_payload",
     "empty_image_tensor",
     "extract_generation_output",
