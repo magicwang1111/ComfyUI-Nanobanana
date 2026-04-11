@@ -20,10 +20,11 @@
 
 ## 节点列表
 
-- `ComfyUI-Nanobanana Client`
 - `ComfyUI-Nanobanana Nano Banana`
 - `ComfyUI-Nanobanana Nano Banana 2`
 - `ComfyUI-Nanobanana Nano Banana Pro`
+
+`ComfyUI-Nanobanana Client` 已移除。连接信息现在统一从后端配置文件读取，不再出现在前端 workflow 中。
 
 ## 模型映射
 
@@ -31,15 +32,70 @@
 - `Nano Banana 2` -> `gemini-3.1-flash-image-preview`
 - `Nano Banana Pro` -> `gemini-3-pro-image-preview`
 
-## Client 参数
+## 安装
 
-`ComfyUI-Nanobanana Client` 现在支持官方直连和 Gemini 原生中转站两种连接方式。
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/magicwang1111/ComfyUI-Nanobanana.git
+cd ComfyUI-Nanobanana
+python -m pip install -r requirements.txt
+```
 
-- `api_key`
-- `request_timeout`
-- `base_url`
-- `auth_mode`
-- `send_seed`
+## 配置方式
+
+首选方式是在仓库根目录创建 `config.local.json`。可以先复制 `config.example.json` 再填写：
+
+```json
+{
+  "api_key": "",
+  "request_timeout": 60,
+  "base_url": "https://generativelanguage.googleapis.com",
+  "auth_mode": "x-goog-api-key",
+  "send_seed": true
+}
+```
+
+说明：
+
+- `config.local.json` 是本地私有文件，已经加入 `.gitignore`
+- `config.example.json` 只是示例，不会被程序当作真实配置读取
+- `config.ini` 仍保留兼容回退能力，但不再是推荐配置方式
+
+### 配置优先级
+
+#### api_key
+
+1. `config.local.json` 中的 `api_key`
+2. 环境变量 `NANOBANANA_API_KEY`
+3. 环境变量 `GEMINI_API_KEY`
+4. `config.ini` 中的 `NANOBANANA_API_KEY`
+5. `config.ini` 中的 `GEMINI_API_KEY`
+
+#### base_url
+
+1. `config.local.json` 中的 `base_url`
+2. 环境变量 `NANOBANANA_BASE_URL`
+3. `config.ini` 中的 `NANOBANANA_BASE_URL`
+4. 默认值 `https://generativelanguage.googleapis.com`
+
+#### auth_mode
+
+1. `config.local.json` 中的 `auth_mode`
+2. 环境变量 `NANOBANANA_AUTH_MODE`
+3. `config.ini` 中的 `NANOBANANA_AUTH_MODE`
+4. 默认值 `x-goog-api-key`
+
+#### send_seed
+
+1. `config.local.json` 中的 `send_seed`
+2. 环境变量 `NANOBANANA_SEND_SEED`
+3. `config.ini` 中的 `NANOBANANA_SEND_SEED`
+4. 默认值 `true`
+
+#### request_timeout
+
+1. `config.local.json` 中的 `request_timeout`
+2. 默认值 `60`
 
 ### auth_mode
 
@@ -57,37 +113,6 @@
 
 如果某个中转站返回 `Invalid value at 'generation_config.seed'`，请把 `send_seed` 关闭。
 
-### 配置优先级
-
-#### api_key
-
-1. Client 节点中的 `api_key`
-2. 环境变量 `NANOBANANA_API_KEY`
-3. 环境变量 `GEMINI_API_KEY`
-4. `config.ini` 中的 `NANOBANANA_API_KEY`
-5. `config.ini` 中的 `GEMINI_API_KEY`
-
-#### base_url
-
-1. Client 节点中的 `base_url`
-2. 环境变量 `NANOBANANA_BASE_URL`
-3. `config.ini` 中的 `NANOBANANA_BASE_URL`
-4. 默认值 `https://generativelanguage.googleapis.com`
-
-#### auth_mode
-
-1. Client 节点中的 `auth_mode`
-2. 环境变量 `NANOBANANA_AUTH_MODE`
-3. `config.ini` 中的 `NANOBANANA_AUTH_MODE`
-4. 默认值 `x-goog-api-key`
-
-#### send_seed
-
-1. Client 节点中的 `send_seed`
-2. 环境变量 `NANOBANANA_SEND_SEED`
-3. `config.ini` 中的 `NANOBANANA_SEND_SEED`
-4. 默认值 `true`
-
 ## 生成节点参数
 
 三个生成节点都会保留原有本地能力校验，并新增一个用于中转站模型别名的参数：
@@ -102,7 +127,6 @@
 
 ### Nano Banana
 
-- `client`
 - `prompt`
 - `seed`
 - `images` 可选
@@ -113,7 +137,6 @@
 
 ### Nano Banana 2
 
-- `client`
 - `prompt`
 - `seed`
 - `images` 可选
@@ -127,7 +150,6 @@
 
 ### Nano Banana Pro
 
-- `client`
 - `prompt`
 - `seed`
 - `images` 可选
@@ -142,28 +164,46 @@
 
 ### Google 官方直连
 
-- `base_url = https://generativelanguage.googleapis.com`
-- `auth_mode = x-goog-api-key`
-- `send_seed = true`
+```json
+{
+  "api_key": "your_token_here",
+  "request_timeout": 60,
+  "base_url": "https://generativelanguage.googleapis.com",
+  "auth_mode": "x-goog-api-key",
+  "send_seed": true
+}
+```
 
 ### Gemini 原生中转站
 
-- `base_url = https://your-relay.example.com`
-- `auth_mode = bearer`
-- `send_seed = true`
-- 如中转站模型名与官方不同，可在生成节点里填写 `model_override`
-
-如果中转站不接受 `generationConfig.seed`，把 `send_seed` 改成 `false` 即可。
-
-例如：
-
-```ini
-[API]
-NANOBANANA_API_KEY = your_token_here
-NANOBANANA_BASE_URL = https://your-relay.example.com
-NANOBANANA_AUTH_MODE = bearer
-NANOBANANA_SEND_SEED = false
+```json
+{
+  "api_key": "your_token_here",
+  "request_timeout": 60,
+  "base_url": "https://your-relay.example.com",
+  "auth_mode": "bearer",
+  "send_seed": true
+}
 ```
+
+如中转站模型名与官方不同，可在生成节点里填写 `model_override`。如果中转站不接受 `generationConfig.seed`，把 `send_seed` 改成 `false` 即可。
+
+### AIHubMix
+
+```json
+{
+  "api_key": "your_token_here",
+  "request_timeout": 60,
+  "base_url": "https://aihubmix.com/gemini",
+  "auth_mode": "x-goog-api-key",
+  "send_seed": true
+}
+```
+
+`AIHubMix` 的站点兼容规则已经在后端处理：
+
+- `Nano Banana 2` 保持原样
+- `Nano Banana Pro` 会自动移除显式的 `thinkingLevel`
 
 ## 行为说明
 
@@ -175,23 +215,6 @@ NANOBANANA_SEND_SEED = false
 - 响应解析兼容 `inlineData/mimeType` 与 `inline_data/mime_type`
 - `Nano Banana 2` 若没有返回 thought 图，`thought_image` 会输出占位黑图
 
-## 安装
-
-```bash
-cd ComfyUI/custom_nodes
-git clone https://github.com/magicwang1111/ComfyUI-Nanobanana.git
-cd ComfyUI-Nanobanana
-python -m pip install -r requirements.txt
-```
-
-## 配置方式
-
-你可以任选一种方式提供连接信息：
-
-- 在 `ComfyUI-Nanobanana Client` 节点内填写
-- 设置环境变量
-- 修改仓库根目录下的 `config.ini`
-
 ## 示例工作流
 
 示例 workflow 位于 [examples/README.md](./examples/README.md)：
@@ -199,6 +222,8 @@ python -m pip install -r requirements.txt
 - `01_comfyui_nanobanana_nano_banana.json`
 - `02_comfyui_nanobanana_nano_banana_2.json`
 - `03_comfyui_nanobanana_nano_banana_pro.json`
+
+这些示例已经不再依赖 `Client` 节点，导入前只需要先准备好 `config.local.json`。
 
 ## 测试
 

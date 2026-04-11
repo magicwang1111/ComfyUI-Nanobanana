@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,7 +6,6 @@ from unittest.mock import patch
 
 from _loader import import_module
 
-capabilities = import_module("py.api.capabilities")
 client_module = import_module("py.api.client")
 nodes = import_module("py.nodes")
 
@@ -26,50 +26,62 @@ class FakeResolvedClient:
         pass
 
 
-class ClientResolutionTests(unittest.TestCase):
-    def test_node_input_key_has_highest_priority(self):
+class RuntimeConfigResolutionTests(unittest.TestCase):
+    def test_json_values_have_highest_priority(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.ini"
-            config_path.write_text(
+            json_path = Path(temp_dir) / "config.local.json"
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "api_key": "json-key",
+                        "request_timeout": 90,
+                        "base_url": "https://json.example.com/",
+                        "auth_mode": "bearer",
+                        "send_seed": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text(
                 "[API]\n"
-                "GEMINI_API_KEY = config-key\n"
-                "NANOBANANA_BASE_URL = https://config.example.com\n"
-                "NANOBANANA_AUTH_MODE = x-goog-api-key\n",
+                "NANOBANANA_API_KEY = legacy-key\n"
+                "NANOBANANA_BASE_URL = https://legacy.example.com\n"
+                "NANOBANANA_AUTH_MODE = x-goog-api-key\n"
+                "NANOBANANA_SEND_SEED = true\n",
                 encoding="utf-8",
             )
 
             with patch.dict(
                 "os.environ",
                 {
-                    "GEMINI_API_KEY": "env-key",
+                    "NANOBANANA_API_KEY": "env-key",
                     "NANOBANANA_BASE_URL": "https://env.example.com",
                     "NANOBANANA_AUTH_MODE": "x-goog-api-key",
                     "NANOBANANA_SEND_SEED": "true",
+                    "GEMINI_API_KEY": "gemini-env-key",
                 },
                 clear=False,
             ):
-                with patch.object(nodes, "CONFIG_PATH", config_path):
-                    with patch.object(nodes, "Client", FakeResolvedClient):
-                        client = nodes.NanoBananaClientNode().create_client(
-                            "node-key",
-                            60,
-                            "https://node.example.com/",
-                            "bearer",
-                            False,
-                        )[0]
-                        self.assertEqual(client.api_key, "node-key")
-                        self.assertEqual(client.base_url, "https://node.example.com")
-                        self.assertEqual(client.auth_mode, "bearer")
-                        self.assertFalse(client.send_seed)
-                        client.close()
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "Client", FakeResolvedClient):
+                            client = nodes._create_runtime_client()
+                            self.assertEqual(client.api_key, "json-key")
+                            self.assertEqual(client.timeout, 90)
+                            self.assertEqual(client.base_url, "https://json.example.com")
+                            self.assertEqual(client.auth_mode, "bearer")
+                            self.assertFalse(client.send_seed)
+                            client.close()
 
-    def test_env_values_beat_config_when_client_uses_defaults(self):
+    def test_env_values_beat_legacy_config_when_json_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.ini"
-            config_path.write_text(
+            json_path = Path(temp_dir) / "config.local.json"
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text(
                 "[API]\n"
-                "NANOBANANA_API_KEY = config-key\n"
-                "NANOBANANA_BASE_URL = https://config.example.com\n"
+                "NANOBANANA_API_KEY = legacy-key\n"
+                "NANOBANANA_BASE_URL = https://legacy.example.com\n"
                 "NANOBANANA_AUTH_MODE = x-goog-api-key\n"
                 "NANOBANANA_SEND_SEED = true\n",
                 encoding="utf-8",
@@ -85,83 +97,98 @@ class ClientResolutionTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch.object(nodes, "CONFIG_PATH", config_path):
-                    with patch.object(nodes, "Client", FakeResolvedClient):
-                        client = nodes.NanoBananaClientNode().create_client(
-                            "",
-                            60,
-                            capabilities.DEFAULT_BASE_URL,
-                            capabilities.DEFAULT_AUTH_MODE,
-                            capabilities.DEFAULT_SEND_SEED,
-                        )[0]
-                        self.assertEqual(client.api_key, "env-key")
-                        self.assertEqual(client.base_url, "https://env.example.com")
-                        self.assertEqual(client.auth_mode, "bearer")
-                        self.assertFalse(client.send_seed)
-                        client.close()
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "Client", FakeResolvedClient):
+                            client = nodes._create_runtime_client()
+                            self.assertEqual(client.api_key, "env-key")
+                            self.assertEqual(client.timeout, nodes.DEFAULT_REQUEST_TIMEOUT)
+                            self.assertEqual(client.base_url, "https://env.example.com")
+                            self.assertEqual(client.auth_mode, "bearer")
+                            self.assertFalse(client.send_seed)
+                            client.close()
 
-    def test_config_values_used_when_env_missing(self):
+    def test_legacy_config_used_when_json_and_env_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.ini"
-            config_path.write_text(
+            json_path = Path(temp_dir) / "config.local.json"
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text(
                 "[API]\n"
-                "NANOBANANA_API_KEY = config-key\n"
-                "NANOBANANA_BASE_URL = https://config.example.com/\n"
+                "NANOBANANA_API_KEY = legacy-key\n"
+                "NANOBANANA_BASE_URL = https://legacy.example.com/\n"
                 "NANOBANANA_AUTH_MODE = bearer\n"
                 "NANOBANANA_SEND_SEED = false\n",
                 encoding="utf-8",
             )
 
             with patch.dict("os.environ", {}, clear=True):
-                with patch.object(nodes, "CONFIG_PATH", config_path):
-                    with patch.object(nodes, "Client", FakeResolvedClient):
-                        client = nodes.NanoBananaClientNode().create_client(
-                            "",
-                            60,
-                            capabilities.DEFAULT_BASE_URL,
-                            capabilities.DEFAULT_AUTH_MODE,
-                            capabilities.DEFAULT_SEND_SEED,
-                        )[0]
-                        self.assertEqual(client.api_key, "config-key")
-                        self.assertEqual(client.base_url, "https://config.example.com")
-                        self.assertEqual(client.auth_mode, "bearer")
-                        self.assertFalse(client.send_seed)
-                        client.close()
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "Client", FakeResolvedClient):
+                            client = nodes._create_runtime_client()
+                            self.assertEqual(client.api_key, "legacy-key")
+                            self.assertEqual(client.timeout, nodes.DEFAULT_REQUEST_TIMEOUT)
+                            self.assertEqual(client.base_url, "https://legacy.example.com")
+                            self.assertEqual(client.auth_mode, "bearer")
+                            self.assertFalse(client.send_seed)
+                            client.close()
 
     def test_gemini_env_key_remains_supported(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.ini"
-            config_path.write_text("[API]\nGEMINI_API_KEY = config-key\n", encoding="utf-8")
+            json_path = Path(temp_dir) / "config.local.json"
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text("[API]\nGEMINI_API_KEY = legacy-key\n", encoding="utf-8")
 
             with patch.dict("os.environ", {"GEMINI_API_KEY": "env-key"}, clear=False):
-                with patch.object(nodes, "CONFIG_PATH", config_path):
-                    with patch.object(nodes, "Client", FakeResolvedClient):
-                        client = nodes.NanoBananaClientNode().create_client(
-                            "",
-                            60,
-                            capabilities.DEFAULT_BASE_URL,
-                            capabilities.DEFAULT_AUTH_MODE,
-                            capabilities.DEFAULT_SEND_SEED,
-                        )[0]
-                        self.assertEqual(client.api_key, "env-key")
-                        self.assertTrue(client.send_seed)
-                        client.close()
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "Client", FakeResolvedClient):
+                            client = nodes._create_runtime_client()
+                            self.assertEqual(client.api_key, "env-key")
+                            self.assertEqual(client.timeout, nodes.DEFAULT_REQUEST_TIMEOUT)
+                            self.assertEqual(client.base_url, client_module.DEFAULT_BASE_URL)
+                            self.assertEqual(client.auth_mode, client_module.DEFAULT_AUTH_MODE)
+                            self.assertTrue(client.send_seed)
+                            client.close()
+
+    def test_request_timeout_only_comes_from_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            json_path = Path(temp_dir) / "config.local.json"
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "api_key": "json-key",
+                        "request_timeout": 120,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text(
+                "[API]\n"
+                "NANOBANANA_API_KEY = legacy-key\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict("os.environ", {}, clear=True):
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "Client", FakeResolvedClient):
+                            client = nodes._create_runtime_client()
+                            self.assertEqual(client.timeout, 120)
+                            client.close()
 
     def test_missing_key_raises(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config.ini"
-            config_path.write_text("[API]\nGEMINI_API_KEY = \n", encoding="utf-8")
+            json_path = Path(temp_dir) / "config.local.json"
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text("[API]\nGEMINI_API_KEY = \n", encoding="utf-8")
 
             with patch.dict("os.environ", {}, clear=True):
-                with patch.object(nodes, "CONFIG_PATH", config_path):
-                    with self.assertRaises(ValueError):
-                        nodes.NanoBananaClientNode().create_client(
-                            "",
-                            60,
-                            capabilities.DEFAULT_BASE_URL,
-                            capabilities.DEFAULT_AUTH_MODE,
-                            capabilities.DEFAULT_SEND_SEED,
-                        )
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with self.assertRaises(ValueError):
+                            nodes._create_runtime_client()
 
 
 class ClientTransportTests(unittest.TestCase):

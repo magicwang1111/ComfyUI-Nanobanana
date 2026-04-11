@@ -1,0 +1,7 @@
+{
+  "api_key": "",
+  "request_timeout": 60,
+  "base_url": "https://generativelanguage.googleapis.com",
+  "auth_mode": "x-goog-api-key",
+  "send_seed": true
+}

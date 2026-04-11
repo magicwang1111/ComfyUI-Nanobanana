@@ -4,9 +4,10 @@
 
 ## 使用前
 
-- 先在 `ComfyUI-Nanobanana Client` 节点里填入 `api_key`，或者改好 `config.ini`
-- 如果 workflow 中包含参考图，请先把占位输入图换成你自己的 ComfyUI `Load Image`
-- `response_mode` 默认使用 `IMAGE+TEXT`，这样更方便排查 API 返回
+- 先在仓库根目录创建并填写 `config.local.json`
+- 可以直接复制根目录的 `config.example.json` 作为模板
+- 如果 workflow 包含参考图，请先把占位输入图换成你自己的 ComfyUI `Load Image`
+- `response_mode` 默认使用 `IMAGE+TEXT`，更方便排查 API 返回
 
 ## 包含内容
 

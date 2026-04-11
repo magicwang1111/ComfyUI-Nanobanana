@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 
 from .api import (
-    AUTH_MODES,
-    CLIENT_TYPE,
     DEFAULT_AUTH_MODE,
     DEFAULT_BASE_URL,
     DEFAULT_RESPONSE_MODE,
@@ -28,34 +26,54 @@ from .api import (
 from .api.capabilities import NODE_CATEGORY
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT_DIR / "config.ini"
-CONFIG_SECTION = "API"
+CONFIG_JSON_PATH = ROOT_DIR / "config.local.json"
+LEGACY_CONFIG_PATH = ROOT_DIR / "config.ini"
+LEGACY_CONFIG_SECTION = "API"
+DEFAULT_REQUEST_TIMEOUT = 60
 
 
-def _load_config_value(*keys):
+def _load_legacy_config_value(*keys):
     config = configparser.ConfigParser()
-    config.read(CONFIG_PATH, encoding="utf-8")
+    config.read(LEGACY_CONFIG_PATH, encoding="utf-8")
     for key in keys:
-        value = config.get(CONFIG_SECTION, key, fallback="").strip()
+        value = config.get(LEGACY_CONFIG_SECTION, key, fallback="").strip()
         if value:
             return value
     return ""
 
 
-def _load_config_api_key():
-    return _load_config_value("NANOBANANA_API_KEY", "GEMINI_API_KEY")
+def _load_legacy_api_key():
+    return _load_legacy_config_value("NANOBANANA_API_KEY", "GEMINI_API_KEY")
 
 
-def _load_config_base_url():
-    return _load_config_value("NANOBANANA_BASE_URL")
+def _load_legacy_base_url():
+    return _load_legacy_config_value("NANOBANANA_BASE_URL")
 
 
-def _load_config_auth_mode():
-    return _load_config_value("NANOBANANA_AUTH_MODE")
+def _load_legacy_auth_mode():
+    return _load_legacy_config_value("NANOBANANA_AUTH_MODE")
 
 
-def _load_config_send_seed():
-    return _load_config_value("NANOBANANA_SEND_SEED")
+def _load_legacy_send_seed():
+    return _load_legacy_config_value("NANOBANANA_SEND_SEED")
+
+
+def _load_json_config():
+    if not CONFIG_JSON_PATH.exists():
+        return {}
+
+    try:
+        with CONFIG_JSON_PATH.open("r", encoding="utf-8") as handle:
+            config_data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{CONFIG_JSON_PATH.name} is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ValueError(f"Failed to read {CONFIG_JSON_PATH.name}: {exc}") from exc
+
+    if not isinstance(config_data, dict):
+        raise ValueError(f"{CONFIG_JSON_PATH.name} must contain a top-level JSON object.")
+
+    return config_data
 
 
 def _load_env_value(*keys):
@@ -78,64 +96,104 @@ def _parse_bool(value, field_name):
     raise ValueError(f"{field_name} must be a boolean value.")
 
 
-def _resolve_api_key(explicit_api_key):
-    if isinstance(explicit_api_key, str) and explicit_api_key.strip():
-        return explicit_api_key.strip()
+def _parse_timeout(value):
+    if isinstance(value, bool):
+        raise ValueError("request_timeout must be an integer.")
+
+    if isinstance(value, int):
+        timeout = value
+    else:
+        try:
+            timeout = int(str(value).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError("request_timeout must be an integer.") from exc
+
+    if timeout < 5:
+        raise ValueError("request_timeout must be greater than or equal to 5.")
+
+    return timeout
+
+
+def _json_value_present(config_data, key):
+    if key not in config_data:
+        return False
+
+    value = config_data[key]
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _resolve_api_key(config_data):
+    if _json_value_present(config_data, "api_key"):
+        return str(config_data["api_key"]).strip()
 
     env_api_key = _load_env_value("NANOBANANA_API_KEY", "GEMINI_API_KEY")
     if env_api_key:
         return env_api_key
 
-    config_api_key = _load_config_api_key()
-    if config_api_key:
-        return config_api_key
+    legacy_api_key = _load_legacy_api_key()
+    if legacy_api_key:
+        return legacy_api_key
 
     raise ValueError(
-        "An API key is required. Fill it in the Client node, set NANOBANANA_API_KEY or GEMINI_API_KEY, "
+        "An API key is required. Add api_key to config.local.json, set NANOBANANA_API_KEY or GEMINI_API_KEY, "
         "or add NANOBANANA_API_KEY / GEMINI_API_KEY to config.ini."
     )
 
 
-def _resolve_base_url(explicit_base_url):
-    normalized_explicit = explicit_base_url.strip().rstrip("/") if isinstance(explicit_base_url, str) else ""
-    if normalized_explicit and normalized_explicit != DEFAULT_BASE_URL:
-        return normalized_explicit
+def _resolve_base_url(config_data):
+    if _json_value_present(config_data, "base_url"):
+        return str(config_data["base_url"]).strip().rstrip("/")
 
     env_base_url = _load_env_value("NANOBANANA_BASE_URL")
     if env_base_url:
         return env_base_url.rstrip("/")
 
-    config_base_url = _load_config_base_url()
-    if config_base_url:
-        return config_base_url.rstrip("/")
+    legacy_base_url = _load_legacy_base_url()
+    if legacy_base_url:
+        return legacy_base_url.rstrip("/")
 
     return DEFAULT_BASE_URL
 
 
-def _resolve_auth_mode(explicit_auth_mode):
-    auth_mode = explicit_auth_mode.strip() if isinstance(explicit_auth_mode, str) else ""
-    if not auth_mode or auth_mode == DEFAULT_AUTH_MODE:
-        auth_mode = _load_env_value("NANOBANANA_AUTH_MODE")
-    if not isinstance(auth_mode, str) or not auth_mode.strip():
-        auth_mode = _load_config_auth_mode()
-    if not isinstance(auth_mode, str) or not auth_mode.strip():
-        auth_mode = DEFAULT_AUTH_MODE
-    return Client.normalize_auth_mode(auth_mode)
+def _resolve_auth_mode(config_data):
+    if _json_value_present(config_data, "auth_mode"):
+        return Client.normalize_auth_mode(str(config_data["auth_mode"]).strip())
+
+    env_auth_mode = _load_env_value("NANOBANANA_AUTH_MODE")
+    if env_auth_mode:
+        return Client.normalize_auth_mode(env_auth_mode)
+
+    legacy_auth_mode = _load_legacy_auth_mode()
+    if legacy_auth_mode:
+        return Client.normalize_auth_mode(legacy_auth_mode)
+
+    return DEFAULT_AUTH_MODE
 
 
-def _resolve_send_seed(explicit_send_seed):
-    if isinstance(explicit_send_seed, bool) and explicit_send_seed is not DEFAULT_SEND_SEED:
-        return explicit_send_seed
+def _resolve_send_seed(config_data):
+    if _json_value_present(config_data, "send_seed"):
+        return _parse_bool(config_data["send_seed"], "send_seed")
 
     env_send_seed = _load_env_value("NANOBANANA_SEND_SEED")
     if env_send_seed:
         return _parse_bool(env_send_seed, "NANOBANANA_SEND_SEED")
 
-    config_send_seed = _load_config_send_seed()
-    if config_send_seed:
-        return _parse_bool(config_send_seed, "NANOBANANA_SEND_SEED")
+    legacy_send_seed = _load_legacy_send_seed()
+    if legacy_send_seed:
+        return _parse_bool(legacy_send_seed, "NANOBANANA_SEND_SEED")
 
-    return explicit_send_seed if isinstance(explicit_send_seed, bool) else DEFAULT_SEND_SEED
+    return DEFAULT_SEND_SEED
+
+
+def _resolve_request_timeout(config_data):
+    if _json_value_present(config_data, "request_timeout"):
+        return _parse_timeout(config_data["request_timeout"])
+
+    return DEFAULT_REQUEST_TIMEOUT
 
 
 def _resolve_model_name(default_model_name, model_override):
@@ -146,6 +204,17 @@ def _resolve_model_name(default_model_name, model_override):
 
     override = model_override.strip()
     return override or default_model_name
+
+
+def _create_runtime_client():
+    config_data = _load_json_config()
+    return Client(
+        _resolve_api_key(config_data),
+        timeout=_resolve_request_timeout(config_data),
+        base_url=_resolve_base_url(config_data),
+        auth_mode=_resolve_auth_mode(config_data),
+        send_seed=_resolve_send_seed(config_data),
+    )
 
 
 def _raise_with_api_guidance(exc):
@@ -166,40 +235,6 @@ def _build_response_json(response_payload):
     return json.dumps(sanitized, ensure_ascii=False, indent=2)
 
 
-class NanoBananaClientNode:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "api_key": ("STRING", {"multiline": False, "default": ""}),
-                "request_timeout": ("INT", {"default": 60, "min": 5, "max": 300, "step": 1}),
-                "base_url": ("STRING", {"multiline": False, "default": DEFAULT_BASE_URL}),
-                "auth_mode": (AUTH_MODES, {"default": DEFAULT_AUTH_MODE}),
-                "send_seed": ("BOOLEAN", {"default": DEFAULT_SEND_SEED}),
-            }
-        }
-
-    RETURN_TYPES = (CLIENT_TYPE,)
-    RETURN_NAMES = ("client",)
-    FUNCTION = "create_client"
-    OUTPUT_NODE = False
-    CATEGORY = NODE_CATEGORY
-
-    def create_client(self, api_key, request_timeout, base_url, auth_mode, send_seed):
-        resolved_api_key = _resolve_api_key(api_key)
-        resolved_base_url = _resolve_base_url(base_url)
-        resolved_auth_mode = _resolve_auth_mode(auth_mode)
-        resolved_send_seed = _resolve_send_seed(send_seed)
-        client = Client(
-            resolved_api_key,
-            timeout=request_timeout,
-            base_url=resolved_base_url,
-            auth_mode=resolved_auth_mode,
-            send_seed=resolved_send_seed,
-        )
-        return (client,)
-
-
 class _BaseNanoBananaNode:
     MODEL_NAME = None
     OUTPUT_NODE = False
@@ -214,7 +249,6 @@ class _BaseNanoBananaNode:
     def INPUT_TYPES(cls):
         spec = cls._model_spec()
         required = {
-            "client": (CLIENT_TYPE,),
             "prompt": ("STRING", {"multiline": True, "default": ""}),
             "seed": ("INT", {"default": DEFAULT_SEED, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "control_after_generate": True}),
             "aspect_ratio": (spec["aspect_ratios"], {"default": "auto"}),
@@ -242,7 +276,6 @@ class _BaseNanoBananaNode:
 
     def _execute_request(
         self,
-        client,
         prompt,
         seed,
         aspect_ratio,
@@ -266,31 +299,36 @@ class _BaseNanoBananaNode:
             include_thoughts=include_thoughts,
             system_prompt=system_prompt,
         )
-        request_model_name = _resolve_model_name(self.MODEL_NAME, model_override)
-        request_seed = seed if getattr(client, "send_seed", True) else None
 
-        payload = build_generation_payload(
-            prompt=prompt,
-            images=images,
-            aspect_ratio=aspect_ratio,
-            response_mode=response_mode,
-            seed=request_seed,
-            resolution=resolution,
-            thinking_level=thinking_level,
-            include_thoughts=include_thoughts,
-            system_prompt=system_prompt,
-        )
-        payload = apply_generation_payload_rules(
-            getattr(client, "base_url", ""),
-            self.MODEL_NAME,
-            request_model_name,
-            payload,
-        )
-
+        client = _create_runtime_client()
         try:
-            response_payload = client.generate_content(request_model_name, payload)
-        except NanoBananaAPIError as exc:
-            _raise_with_api_guidance(exc)
+            request_model_name = _resolve_model_name(self.MODEL_NAME, model_override)
+            request_seed = seed if getattr(client, "send_seed", True) else None
+
+            payload = build_generation_payload(
+                prompt=prompt,
+                images=images,
+                aspect_ratio=aspect_ratio,
+                response_mode=response_mode,
+                seed=request_seed,
+                resolution=resolution,
+                thinking_level=thinking_level,
+                include_thoughts=include_thoughts,
+                system_prompt=system_prompt,
+            )
+            payload = apply_generation_payload_rules(
+                getattr(client, "base_url", ""),
+                self.MODEL_NAME,
+                request_model_name,
+                payload,
+            )
+
+            try:
+                response_payload = client.generate_content(request_model_name, payload)
+            except NanoBananaAPIError as exc:
+                _raise_with_api_guidance(exc)
+        finally:
+            client.close()
 
         print(f"[ComfyUI-Nanobanana] {request_model_name} request completed")
         parsed_output = extract_generation_output(response_payload)
@@ -305,7 +343,6 @@ class NanoBanana25Node(_BaseNanoBananaNode):
 
     def generate(
         self,
-        client,
         prompt,
         seed=DEFAULT_SEED,
         aspect_ratio="auto",
@@ -315,7 +352,6 @@ class NanoBanana25Node(_BaseNanoBananaNode):
         model_override="",
     ):
         parsed_output, response_json = self._execute_request(
-            client=client,
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
@@ -335,7 +371,6 @@ class NanoBanana31Node(_BaseNanoBananaNode):
 
     def generate(
         self,
-        client,
         prompt,
         seed=DEFAULT_SEED,
         aspect_ratio="auto",
@@ -348,7 +383,6 @@ class NanoBanana31Node(_BaseNanoBananaNode):
         model_override="",
     ):
         parsed_output, response_json = self._execute_request(
-            client=client,
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
@@ -372,7 +406,6 @@ class NanoBananaProNode(_BaseNanoBananaNode):
 
     def generate(
         self,
-        client,
         prompt,
         seed=DEFAULT_SEED,
         aspect_ratio="auto",
@@ -384,7 +417,6 @@ class NanoBananaProNode(_BaseNanoBananaNode):
         model_override="",
     ):
         parsed_output, response_json = self._execute_request(
-            client=client,
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
