@@ -1,3 +1,4 @@
+import asyncio
 import configparser
 import json
 import os
@@ -13,6 +14,7 @@ from .api import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_THINKING_LEVEL,
     RESPONSE_MODES,
+    AsyncClient,
     Client,
     NanoBananaAPIError,
     apply_generation_payload_rules,
@@ -24,6 +26,7 @@ from .api import (
     validate_generation_request,
 )
 from .api.capabilities import NODE_CATEGORY
+import torch
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 CONFIG_JSON_PATH = ROOT_DIR / "config.local.json"
@@ -206,15 +209,23 @@ def _resolve_model_name(default_model_name, model_override):
     return override or default_model_name
 
 
-def _create_runtime_client():
+def _resolve_runtime_client_kwargs():
     config_data = _load_json_config()
-    return Client(
-        _resolve_api_key(config_data),
-        timeout=_resolve_request_timeout(config_data),
-        base_url=_resolve_base_url(config_data),
-        auth_mode=_resolve_auth_mode(config_data),
-        send_seed=_resolve_send_seed(config_data),
-    )
+    return {
+        "api_key": _resolve_api_key(config_data),
+        "timeout": _resolve_request_timeout(config_data),
+        "base_url": _resolve_base_url(config_data),
+        "auth_mode": _resolve_auth_mode(config_data),
+        "send_seed": _resolve_send_seed(config_data),
+    }
+
+
+def _create_runtime_client():
+    return Client(**_resolve_runtime_client_kwargs())
+
+
+def _create_runtime_async_client():
+    return AsyncClient(**_resolve_runtime_client_kwargs())
 
 
 def _raise_with_api_guidance(exc):
@@ -232,6 +243,32 @@ def _raise_with_api_guidance(exc):
 
 def _build_response_json(response_payload):
     sanitized = sanitize_response_for_debug(response_payload)
+    return json.dumps(sanitized, ensure_ascii=False, indent=2)
+
+
+def _merge_image_tensors(images):
+    valid_images = [image for image in images if image is not None]
+    if not valid_images:
+        return None
+    if len(valid_images) == 1:
+        return valid_images[0]
+    return torch.cat(valid_images, dim=0)
+
+
+def _merge_output_texts(texts):
+    normalized = [text.strip() for text in texts if isinstance(text, str) and text.strip()]
+    if not normalized:
+        return ""
+    if len(normalized) == 1:
+        return normalized[0]
+    return "\n\n".join(f"[request {index}] {text}" for index, text in enumerate(normalized, start=1))
+
+
+def _build_response_json_list(response_payloads):
+    if len(response_payloads) == 1:
+        return _build_response_json(response_payloads[0])
+
+    sanitized = [sanitize_response_for_debug(payload) for payload in response_payloads]
     return json.dumps(sanitized, ensure_ascii=False, indent=2)
 
 
@@ -258,6 +295,7 @@ class _BaseNanoBananaNode:
             "images": ("IMAGE",),
             "system_prompt": ("STRING", {"multiline": True, "default": DEFAULT_SYSTEM_PROMPT}),
             "model_override": ("STRING", {"multiline": False, "default": ""}),
+            "parallel_requests": ("INT", {"default": 1, "min": 1, "max": 8}),
         }
 
         if spec["supports_resolution"]:
@@ -274,7 +312,7 @@ class _BaseNanoBananaNode:
 
         return {"required": required, "optional": optional}
 
-    def _execute_request(
+    async def _execute_single_request(
         self,
         prompt,
         seed,
@@ -300,7 +338,7 @@ class _BaseNanoBananaNode:
             system_prompt=system_prompt,
         )
 
-        client = _create_runtime_client()
+        client = _create_runtime_async_client()
         try:
             request_model_name = _resolve_model_name(self.MODEL_NAME, model_override)
             request_seed = seed if getattr(client, "send_seed", True) else None
@@ -324,15 +362,61 @@ class _BaseNanoBananaNode:
             )
 
             try:
-                response_payload = client.generate_content(request_model_name, payload)
+                response_payload = await client.generate_content(request_model_name, payload)
             except NanoBananaAPIError as exc:
                 _raise_with_api_guidance(exc)
         finally:
-            client.close()
+            await client.close()
 
         print(f"[ComfyUI-Nanobanana] {request_model_name} request completed")
-        parsed_output = extract_generation_output(response_payload)
-        return parsed_output, _build_response_json(response_payload)
+        return extract_generation_output(response_payload), response_payload
+
+    async def _execute_request(
+        self,
+        prompt,
+        seed,
+        aspect_ratio,
+        response_mode,
+        images=None,
+        resolution=None,
+        thinking_level=None,
+        include_thoughts=False,
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
+        model_override="",
+        parallel_requests=1,
+    ):
+        parallel_requests = int(parallel_requests)
+        if parallel_requests < 1:
+            raise ValueError("parallel_requests must be greater than or equal to 1.")
+
+        tasks = []
+        for request_index in range(parallel_requests):
+            request_seed = seed + request_index if seed is not None else None
+            tasks.append(
+                self._execute_single_request(
+                    prompt=prompt,
+                    seed=request_seed,
+                    aspect_ratio=aspect_ratio,
+                    response_mode=response_mode,
+                    images=images,
+                    resolution=resolution,
+                    thinking_level=thinking_level,
+                    include_thoughts=include_thoughts,
+                    system_prompt=system_prompt,
+                    model_override=model_override,
+                )
+            )
+
+        results = await asyncio.gather(*tasks)
+        parsed_outputs = [item[0] for item in results]
+        response_payloads = [item[1] for item in results]
+
+        merged_output = {
+            "images": _merge_image_tensors([output["images"] for output in parsed_outputs]),
+            "thought_images": _merge_image_tensors([output["thought_images"] for output in parsed_outputs]),
+            "text": _merge_output_texts([output["text"] for output in parsed_outputs]),
+        }
+        return merged_output, _build_response_json_list(response_payloads)
 
 
 class NanoBanana25Node(_BaseNanoBananaNode):
@@ -341,7 +425,7 @@ class NanoBanana25Node(_BaseNanoBananaNode):
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
     RETURN_NAMES = ("image", "text", "response_json")
 
-    def generate(
+    async def generate(
         self,
         prompt,
         seed=DEFAULT_SEED,
@@ -350,8 +434,9 @@ class NanoBanana25Node(_BaseNanoBananaNode):
         images=None,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         model_override="",
+        parallel_requests=1,
     ):
-        parsed_output, response_json = self._execute_request(
+        parsed_output, response_json = await self._execute_request(
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
@@ -359,6 +444,7 @@ class NanoBanana25Node(_BaseNanoBananaNode):
             images=images,
             system_prompt=system_prompt,
             model_override=model_override,
+            parallel_requests=parallel_requests,
         )
         return (parsed_output["images"], parsed_output["text"], response_json)
 
@@ -369,7 +455,7 @@ class NanoBanana31Node(_BaseNanoBananaNode):
     RETURN_TYPES = ("IMAGE", "STRING", "IMAGE", "STRING")
     RETURN_NAMES = ("image", "text", "thought_image", "response_json")
 
-    def generate(
+    async def generate(
         self,
         prompt,
         seed=DEFAULT_SEED,
@@ -381,8 +467,9 @@ class NanoBanana31Node(_BaseNanoBananaNode):
         include_thoughts=False,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         model_override="",
+        parallel_requests=1,
     ):
-        parsed_output, response_json = self._execute_request(
+        parsed_output, response_json = await self._execute_request(
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
@@ -393,6 +480,7 @@ class NanoBanana31Node(_BaseNanoBananaNode):
             include_thoughts=include_thoughts,
             system_prompt=system_prompt,
             model_override=model_override,
+            parallel_requests=parallel_requests,
         )
         thought_images = parsed_output["thought_images"] or empty_image_tensor()
         return (parsed_output["images"], parsed_output["text"], thought_images, response_json)
@@ -404,7 +492,7 @@ class NanoBananaProNode(_BaseNanoBananaNode):
     RETURN_TYPES = ("IMAGE", "STRING", "STRING")
     RETURN_NAMES = ("image", "text", "response_json")
 
-    def generate(
+    async def generate(
         self,
         prompt,
         seed=DEFAULT_SEED,
@@ -415,8 +503,9 @@ class NanoBananaProNode(_BaseNanoBananaNode):
         thinking_level=DEFAULT_THINKING_LEVEL,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         model_override="",
+        parallel_requests=1,
     ):
-        parsed_output, response_json = self._execute_request(
+        parsed_output, response_json = await self._execute_request(
             prompt=prompt,
             seed=seed,
             aspect_ratio=aspect_ratio,
@@ -426,5 +515,6 @@ class NanoBananaProNode(_BaseNanoBananaNode):
             thinking_level=thinking_level,
             system_prompt=system_prompt,
             model_override=model_override,
+            parallel_requests=parallel_requests,
         )
         return (parsed_output["images"], parsed_output["text"], response_json)

@@ -13,7 +13,7 @@ from .capabilities import (
     get_model_spec,
     validate_generation_request,
 )
-from .client import Client
+from .client import AsyncClient, Client
 from .exceptions import NanoBananaAPIError
 from .image_generation import (
     build_generation_payload,
@@ -25,6 +25,7 @@ from .site_rules import apply_generation_payload_rules
 
 __all__ = [
     "AUTH_MODES",
+    "AsyncClient",
     "CLIENT_TYPE",
     "DEFAULT_AUTH_MODE",
     "DEFAULT_BASE_URL",

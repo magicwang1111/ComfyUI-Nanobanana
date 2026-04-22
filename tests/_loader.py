@@ -58,11 +58,15 @@ def _install_fake_torch():
     def stack(items):
         return FakeTensor(numpy.stack([item._array if isinstance(item, FakeTensor) else item for item in items]))
 
+    def cat(items, dim=0):
+        return FakeTensor(numpy.concatenate([item._array if isinstance(item, FakeTensor) else item for item in items], axis=dim))
+
     fake_torch.Tensor = FakeTensor
     fake_torch.float32 = numpy.float32
     fake_torch.zeros = zeros
     fake_torch.from_numpy = from_numpy
     fake_torch.stack = stack
+    fake_torch.cat = cat
     sys.modules["torch"] = fake_torch
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import unittest
@@ -23,6 +24,11 @@ class FakeResolvedClient:
         return client_module.Client.normalize_auth_mode(auth_mode)
 
     def close(self):
+        pass
+
+
+class FakeResolvedAsyncClient(FakeResolvedClient):
+    async def close(self):
         pass
 
 
@@ -178,6 +184,36 @@ class RuntimeConfigResolutionTests(unittest.TestCase):
                             self.assertEqual(client.timeout, 120)
                             client.close()
 
+    def test_async_runtime_client_uses_same_resolved_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            json_path = Path(temp_dir) / "config.local.json"
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "api_key": "json-key",
+                        "request_timeout": 75,
+                        "base_url": "https://json.example.com/",
+                        "auth_mode": "bearer",
+                        "send_seed": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            legacy_path = Path(temp_dir) / "config.ini"
+            legacy_path.write_text("[API]\nGEMINI_API_KEY = legacy-key\n", encoding="utf-8")
+
+            with patch.dict("os.environ", {}, clear=True):
+                with patch.object(nodes, "CONFIG_JSON_PATH", json_path):
+                    with patch.object(nodes, "LEGACY_CONFIG_PATH", legacy_path):
+                        with patch.object(nodes, "AsyncClient", FakeResolvedAsyncClient):
+                            client = nodes._create_runtime_async_client()
+                            self.assertEqual(client.api_key, "json-key")
+                            self.assertEqual(client.timeout, 75)
+                            self.assertEqual(client.base_url, "https://json.example.com")
+                            self.assertEqual(client.auth_mode, "bearer")
+                            self.assertFalse(client.send_seed)
+                            asyncio.run(client.close())
+
     def test_missing_key_raises(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             json_path = Path(temp_dir) / "config.local.json"
@@ -221,6 +257,16 @@ class ClientTransportTests(unittest.TestCase):
     def test_invalid_auth_mode_raises(self):
         with self.assertRaises(ValueError):
             client_module.Client("relay-key", auth_mode="invalid")
+
+    def test_async_client_builds_google_api_key_headers(self):
+        client = client_module.AsyncClient("google-key")
+        try:
+            self.assertEqual(client.auth_mode, "x-goog-api-key")
+            self.assertTrue(client.send_seed)
+            self.assertEqual(client._client.headers.get("x-goog-api-key"), "google-key")
+            self.assertIsNone(client._client.headers.get("Authorization"))
+        finally:
+            asyncio.run(client.close())
 
 
 if __name__ == "__main__":
