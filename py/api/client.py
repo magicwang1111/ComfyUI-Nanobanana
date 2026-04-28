@@ -5,7 +5,7 @@ from .exceptions import NanoBananaAPIError
 
 
 def _build_timeout_config(timeout):
-    return httpx.Timeout(connect=10.0, read=timeout, write=timeout, pool=timeout)
+    return httpx.Timeout(connect=timeout, read=timeout, write=timeout, pool=timeout)
 
 
 def _normalize_auth_mode(auth_mode):
